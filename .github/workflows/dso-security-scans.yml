@@ -156,12 +156,18 @@ jobs:
               echo "Juice Shop failed to become ready"
               exit 1
             '
+- name: Prepare writable ZAP report directory
+
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/zap-output"
+          chmod 777 "$GITHUB_WORKSPACE/zap-output"
+
 
       - name: Run ZAP baseline scan
         run: |
           docker run --rm \
             --network dso-zap \
-            -v "$GITHUB_WORKSPACE:/zap/wrk/:rw" \
+            -v "$GITHUB_WORKSPACE/zap-output:/zap/wrk/:rw"
             --workdir /zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
