@@ -127,8 +127,7 @@ jobs:
 
       - name: Build Juice Shop image
         run: |
-          docker build \
-            -t juice-shop-dso-lab:${{ github.sha }} .
+          docker build -t juice-shop-dso-lab:${{ github.sha }} .
 
       - name: Create isolated Docker network
         run: docker network create dso-zap
@@ -157,18 +156,16 @@ jobs:
               exit 1
             '
 
-       - name: Prepare writable ZAP report directory
-
+      - name: Prepare writable ZAP report directory
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zap-output"
           chmod 777 "$GITHUB_WORKSPACE/zap-output"
-
 
       - name: Run ZAP baseline scan
         run: |
           docker run --rm \
             --network dso-zap \
-            -v "$GITHUB_WORKSPACE/zap-output:/zap/wrk/:rw"
+            -v "$GITHUB_WORKSPACE/zap-output:/zap/wrk/:rw" \
             --workdir /zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
@@ -177,3 +174,19 @@ jobs:
             -r zap-report.html \
             -J zap-report.json
 
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zap-baseline-report
+          path: |
+            zap-output/zap-report.html
+            zap-output/zap-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clean up DAST containers
+        if: always()
+        run: |
+          docker rm -f juice-shop 2>/dev/null || true
+          docker network rm dso-zap 2>/dev/null || true
