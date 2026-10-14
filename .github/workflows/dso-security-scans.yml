@@ -113,3 +113,75 @@ jobs:
           path: trivy-image-report.json
           if-no-files-found: warn
           retention-days: 7
+
+  dast-zap:
+    name: DAST - OWASP ZAP Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build Juice Shop image
+        run: |
+          docker build \
+            -t juice-shop-dso-lab:${{ github.sha }} .
+
+      - name: Create isolated Docker network
+        run: docker network create dso-zap
+
+      - name: Start Juice Shop
+        run: |
+          docker run -d --name juice-shop \
+            --network dso-zap \
+            --network-alias juice-shop \
+            juice-shop-dso-lab:${{ github.sha }}
+
+      - name: Wait for Juice Shop
+        run: |
+          docker run --rm --network dso-zap \
+            --entrypoint sh curlimages/curl:latest -c '
+              i=0
+              while [ "$i" -lt 30 ]; do
+                if curl -fsS http://juice-shop:3000/ >/dev/null; then
+                  echo "Juice Shop is ready"
+                  exit 0
+                fi
+                i=$((i + 1))
+                sleep 2
+              done
+              echo "Juice Shop failed to become ready"
+              exit 1
+            '
+
+      - name: Run ZAP baseline scan
+        run: |
+          docker run --rm \
+            --network dso-zap \
+            -v "$GITHUB_WORKSPACE:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://juice-shop:3000 \
+            -m 2 -I \
+            -r zap-report.html \
+            -J zap-report.json
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zap-baseline-report
+          path: |
+            zap-report.html
+            zap-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clean up DAST containers
+        if: always()
+        run: |
+          docker rm -f juice-shop 2>/dev/null || true
+          docker network rm dso-zap 2>/dev/null || true
