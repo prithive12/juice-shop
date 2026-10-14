@@ -156,7 +156,8 @@ jobs:
               echo "Juice Shop failed to become ready"
               exit 1
             '
-- name: Prepare writable ZAP report directory
+
+       - name: Prepare writable ZAP report directory
 
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zap-output"
