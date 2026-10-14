@@ -50,7 +50,7 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/src" \
             semgrep/semgrep:latest \
-            scan --config auto \
+            semgrep scan --config auto \
             --json --output /src/semgrep-report.json /src
 
       - name: Upload Semgrep report
