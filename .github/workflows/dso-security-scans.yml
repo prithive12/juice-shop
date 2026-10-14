@@ -162,26 +162,11 @@ jobs:
           docker run --rm \
             --network dso-zap \
             -v "$GITHUB_WORKSPACE:/zap/wrk/:rw" \
+            --workdir /zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://juice-shop:3000 \
             -m 2 -I \
-            -r zap-report.html \
-            -J zap-report.json
+            -r /zap/wrk/zap-report.html \
+            -J /zap/wrk/zap-report.json
 
-      - name: Upload ZAP reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: zap-baseline-report
-          path: |
-            zap-report.html
-            zap-report.json
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Clean up DAST containers
-        if: always()
-        run: |
-          docker rm -f juice-shop 2>/dev/null || true
-          docker network rm dso-zap 2>/dev/null || true
