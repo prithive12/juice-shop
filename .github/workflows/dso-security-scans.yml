@@ -25,6 +25,9 @@ jobs:
 
       - name: Generate dependency audit report
         run: npm audit --json > npm-audit.json || true
+      - name: Gate on critical production dependency vulnerabilities
+        if: ${{ vars.DSO_ENFORCE_GATES == 'true' }}
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Upload npm audit report
         if: always()
@@ -113,6 +116,16 @@ jobs:
           path: trivy-image-report.json
           if-no-files-found: warn
           retention-days: 7
+      - name: Gate on fixable critical container vulnerabilities
+        if: ${{ vars.DSO_ENFORCE_GATES == 'true' }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: juice-shop-dso-lab:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
 
   dast-zap:
     name: DAST - OWASP ZAP Baseline
@@ -190,3 +203,66 @@ jobs:
         run: |
           docker rm -f juice-shop 2>/dev/null || true
           docker network rm dso-zap 2>/dev/null || true
+
+  notify-security-failure:
+    name: GitHub Notification - Security Failure
+    needs:
+      - dependency-audit
+      - sast
+      - gitleaks
+      - container-scan
+      - dast-zap
+    if: >-
+      ${{
+        always() &&
+        (
+          needs.dependency-audit.result == 'failure' ||
+          needs.sast.result == 'failure' ||
+          needs.gitleaks.result == 'failure' ||
+          needs.container-scan.result == 'failure' ||
+          needs.dast-zap.result == 'failure'
+        )
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Create GitHub issue for failed pipeline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_OWNER_GITHUB: ${{ vars.APP_OWNER_GITHUB }}
+          SCA_STATUS: ${{ needs.dependency-audit.result }}
+          SAST_STATUS: ${{ needs.sast.result }}
+          GITLEAKS_STATUS: ${{ needs.gitleaks.result }}
+          TRIVY_STATUS: ${{ needs.container-scan.result }}
+          ZAP_STATUS: ${{ needs.dast-zap.result }}
+        run: |
+          owner="${APP_OWNER_GITHUB:-$GITHUB_ACTOR}"
+
+          cat > issue-body.md <<BODY
+          ## DevSecOps security pipeline failed
+
+          @${owner} Please review this security pipeline run.
+
+          - Repository: ${GITHUB_REPOSITORY}
+          - Branch: ${GITHUB_REF_NAME}
+          - Commit: ${GITHUB_SHA}
+          - Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          | Security check | Result |
+          |---|---|
+          | SCA - npm audit | ${SCA_STATUS} |
+          | SAST - Semgrep | ${SAST_STATUS} |
+          | Gitleaks | ${GITLEAKS_STATUS} |
+          | Trivy | ${TRIVY_STATUS} |
+          | OWASP ZAP | ${ZAP_STATUS} |
+
+          Review the failed job logs and reports.
+          Do not paste secret values into this issue.
+          BODY
+
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "DevSecOps pipeline failure - run #${GITHUB_RUN_NUMBER}" \
+            --body-file issue-body.md
