@@ -167,6 +167,6 @@ jobs:
             zap-baseline.py \
             -t http://juice-shop:3000 \
             -m 2 -I \
-            -r /zap/wrk/zap-report.html \
-            -J /zap/wrk/zap-report.json
+            -r zap-report.html \
+            -J zap-report.json
 
