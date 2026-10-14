@@ -1,0 +1,21 @@
+
+name: DSO Lab - First Workflow
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GitHub Actions
+        run: |
+          echo "My DevSecOps lab is running!"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $GITHUB_REF_NAME"
